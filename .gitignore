@@ -1,0 +1,21 @@
+# Ignore build artifacts and generated files
+hvac_algo.wasm
+*.o
+*.out
+
+# Ignore Python cache and virtual environments
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore IDE/editor configs
+.vscode/
+.idea/
+*.swp
+EOF
