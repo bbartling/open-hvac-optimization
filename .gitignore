@@ -1,31 +1,20 @@
-# Python
+# Ignore Emscripten and build artefacts
+**/*.wasm
+**/*.o
+**/*.bc
+**/*.js
+
+# Ignore Python caches and virtual environments
 __pycache__/
 *.py[cod]
-*.pyd
-*.so
-*.dylib
-*.dll
-.venv/
-venv/
 env/
-pip-wheel-metadata/
+venv/
 *.egg-info/
-dist/
-build/
 
-# Wasm artifacts
-c/*.wasm
-c/*.wat
+# Ignore test output
+.pytest_cache/
 
-# Emscripten
-**/.emscripten_cache/
-**/emsdk/
-**/emsdk-*/
-**/upstream/
-**/node_modules/
-
-# OS / editor
+# OS and editor junk
+*~
 .DS_Store
 Thumbs.db
-.vscode/
-.idea/

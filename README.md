@@ -1,97 +1,186 @@
-# HVAC Guideline‑36 WebAssembly Module
+# Open HVAC WASM
 
-This repository demonstrates how to implement the ASHRAE Guideline 36
-zone‑level request logic in C, compile it to a WebAssembly module
-using Emscripten and then call it from Python. The same pattern
-generalises to any IoT edge application where Python acts as the
-“gateway glue” (handling BACnet, MQTT and scheduling) while
-performance‑sensitive algorithms live in compiled code. By shipping
-site‑specific logic as a `.wasm` blob you can change behaviour
-without modifying the gateway itself—similar to how Niagara shares
-`.bog` or `.jar` files across platforms.
+This repository contains a modular implementation of the
+**ASHRAE Guideline 36** request and reset algorithms compiled to
+WebAssembly.  The goal of this project is to provide a portable
+building‑automation core that can run on any Linux‑based IoT edge
+device and be orchestrated from Python.  The design mirrors the
+Niagara ProgramObjects used in the *open‑hvac‑optimization* project but
+packages each algorithm as a standalone WebAssembly module so it can
+be versioned, tested and distributed like a `.bog` file.
 
-## Directory layout
+Two levels of control are provided:
 
-```text
-hvac_wasm_algo/
-├── c/
-│   ├── hvac_algo.c       # C implementation of the G36 request logic
-│   ├── hvac_algo.h       # Public API
-│   └── build.sh          # Build script to compile the C code to WebAssembly
-├── python/
-│   ├── algo_host.py      # Python wrapper around the WebAssembly module
-│   └── smoke_test.py     # Example script exercising the algorithm
-└── README.md             # You are here
+* **VAV zone request counter** (`c/vav/vav_algo.c`) — Implements the
+  GL‑36 zone‑level logic that determines **cooling** and **pressure**
+  requests for each VAV box based on damper position, airflow,
+  zone temperature and loop demand.  Each call to `vav_update` can
+  process an arbitrary number of zones.  Timers and hysteresis are
+  managed per zone internally.
+
+* **AHU Trim & Respond** (`c/ahu/ahu_algo.c`) — Implements simplified
+  duct static pressure and supply air temperature reset algorithms for
+  an air handling unit.  The algorithms support startup delays,
+  adjustable update cadence, ignored request thresholds and bounded
+  trim/respond magnitudes.  Outside air temperature inputs are
+  accepted but currently ignored.
+
+Python wrappers (`python/vav_host.py` and `python/ahu_host.py`) use
+the [wasmtime](https://github.com/bytecodealliance/wasmtime) runtime to
+load and interact with the compiled `.wasm` files.  They hide the
+complexity of WebAssembly memory management and provide idiomatic
+methods such as `VAVAlgo.update()` and `AHUAlgo.update_pressure()`.
+
+The `tests/` directory contains unit tests exercising the zone and
+AHU algorithms.  The tests use a one‑second timestep and accumulate
+minutes of elapsed time via loops to satisfy the persistence timers
+specified in the Guideline.  When Emscripten is available the tests
+call `c/build.sh` to compile the latest C sources into `.wasm`.
+
+## Repository structure
+
+```
+open-hvac-wasm/
+├── LICENSE                  # SPDX: MIT
+├── c/                       # C sources and build script
+│   ├── build.sh             # compile vav_algo.wasm and ahu_algo.wasm
+│   ├── vav/
+│   │   ├── vav_algo.c       # GL‑36 VAV box request logic
+│   │   └── vav_algo.h       # C API
+│   └── ahu/
+│       ├── ahu_algo.c       # Trim & Respond algorithms for AHU
+│       └── ahu_algo.h       # C API
+├── python/                  # Python wrappers using wasmtime
+│   ├── vav_host.py          # VAV wrapper
+│   └── ahu_host.py          # AHU wrapper
+├── tests/                   # Pytest unit tests
+│   ├── test_vav.py          # VAV algorithm tests
+│   └── test_ahu.py          # AHU algorithm tests
+└── README.md                # this file
 ```
 
 ## Prerequisites
 
-To build and run this example you will need:
+* **Emscripten** — You must install the Emscripten SDK to compile the
+  C sources to WebAssembly.  On Ubuntu you can follow the official
+  instructions to install `emsdk`【175348836414933†L81-L115】.  After installation run
+  `source emsdk_env.sh` to put `emcc` on your `PATH`.
 
-1. **Emscripten SDK** – This provides the `emcc` compiler. Follow the
-   [official installation guide](https://emscripten.org/docs/getting_started/downloads.html)
-   or install via your package manager on Linux. Once installed,
-   source the `emsdk_env.sh` script so that `emcc` is on your `PATH`.
-2. **Python 3.8+**
-3. **wasmtime** – Python bindings for the Wasmtime WebAssembly
-   runtime. Install via `pip install wasmtime`.
+* **Python 3.8+** with `pip`.  The tests and wrappers depend on
+  `wasmtime`.  Install it into a virtual environment:
 
-These instructions assume a Linux/WSL environment but should also
-apply to macOS.
+  ```sh
+  python3 -m venv env
+  . env/bin/activate
+  pip install wasmtime pytest
+  ```
 
-## Building the WebAssembly module
+## Building the WebAssembly modules
 
-From within the `c` directory run the provided build script:
+Run the build script from the `c/` directory:
 
-```bash
+```sh
 cd c
 ./build.sh
 ```
 
-If configured correctly this will produce a `hvac_algo.wasm` file in
-the same directory. The script exports the `hvac_init` and
-`hvac_update` functions along with `malloc` and `free` for memory
-management. You can adjust the `-O3` optimisation level and exported
-functions as needed.
+This will produce two files:
 
-## Running the smoke test
+* `vav/vav_algo.wasm` — the zone request module
+* `ahu/ahu_algo.wasm` — the AHU reset module
 
-After building, you can run the Python smoke test to verify that the
-module works end‑to‑end:
+These files are consumed by the Python wrappers.  If `emcc` is not on
+your `PATH` the script will exit without building; in that case you
+should place precompiled `.wasm` files in the respective directories.
 
-```bash
-cd python
-pip install wasmtime  # if not already installed
-python smoke_test.py
+## Running the tests
+
+After building the wasm modules you can run the unit tests with
+`pytest`:
+
+```sh
+pytest -q
 ```
 
-This will construct an `HVACAlgo` wrapper around the compiled
-WebAssembly module, initialise it for two zones and then feed in
-sample telemetry every 10 seconds. The script prints the cooling and
-pressure requests for each zone at each time step. You can modify
-`n_zones`, the inputs and the time step to suit your own needs.
+The VAV tests verify that zero inputs produce zero requests; that
+consistent undersupply/overheating yields `3` requests after the
+appropriate persistence periods; and that invalid data (e.g. zero
+flow setpoint) resets the pressure request.  The AHU tests verify
+trim and respond behaviour for both pressure and SAT loops, including
+clamping to minimum/maximum setpoints.
 
-## Integrating with a real IoT gateway
+## Example usage
 
-In a production setting your Python gateway would call
-`hvac_init(n_zones)` once during start‑up and then call
-`hvac_update()` every polling period (e.g. 10 seconds) with the latest
-telemetry. The gateway would convert BACnet point values into the
-simple arrays expected by the algorithm and then publish the returned
-request counts to MQTT or write them back to BACnet. Because the
-algorithm state is internal to the WebAssembly module, there is no
-shared mutable state in Python—making the gateway code much easier to
-reason about.
+Below is a minimal example demonstrating how to combine the VAV and
+AHU modules to implement a complete GL‑36 airside reset.  This
+example assumes that the modules have been built with `c/build.sh`.
 
-## Note on data validity
+```python
+from vav_host import VAVAlgo
+from ahu_host import AHUAlgo
 
-For brevity this example does not replicate all of the data
-sanitisation and fail‑safe logic found in the original Niagara
-implementation (e.g. checking for invalid point values and clearing
-timers on error). If you require full parity, you can add additional
-checks in `hvac_algo.c` before computing requests.
+# Instantiate for 10 zones
+vav = VAVAlgo('c/vav/vav_algo.wasm', n_zones=10)
+ahu = AHUAlgo('c/ahu/ahu_algo.wasm')
 
-## License
+# Initialise AHU loops
+ahu.init_pressure(
+    sp0=1.5, spmin=1.0, spmax=2.5,
+    startup_delay_sec=120.0, update_interval_sec=30.0,
+    ignore_req=2.0, sp_trim=-0.1,
+    sp_respond=0.2, sp_respond_max=0.4
+)
+ahu.init_sat(
+    sp0=55.0, spmin=50.0, spmax=65.0,
+    startup_delay_sec=120.0, update_interval_sec=30.0,
+    ignore_req=2.0, sp_trim=0.5,
+    sp_respond=-1.0, sp_respond_max=-2.0
+)
 
-This example is provided under the MIT license. See the `LICENSE`
-file for details.
+# At each control interval (e.g. every 10 s) you would:
+dt = 10.0
+zoneTemps = [...]      # list of floats of length 10
+zoneSps = [...]        # list of floats
+zoneDemands = [...]    # list of floats
+flows = [...]          # list of floats
+flowSps = [...]        # list of floats
+dampers = [...]         # list of floats
+
+# Compute zone requests
+coolReqs, pressReqs = vav.update(zoneTemps, zoneSps, zoneDemands,
+                                 flows, flowSps, dampers, dt_sec=dt, is_imperial=0)
+
+# Aggregate requests for AHU
+total_press_reqs = sum(pressReqs)
+total_cool_reqs  = sum(coolReqs)
+
+# Read current setpoints from your BAS
+current_pressure_sp = ...
+current_sat_sp      = ...
+fan_running = 1
+
+# Update AHU setpoints
+new_pressure_sp = ahu.update_pressure(fan_running, current_pressure_sp,
+                                      total_press_reqs, dt_sec=dt)
+new_sat_sp      = ahu.update_sat(fan_running, current_sat_sp,
+                                 total_cool_reqs, outside_air_temp=70.0,
+                                 oat_min=50.0, oat_max=80.0, dt_sec=dt)
+
+```
+
+## Future directions
+
+The current implementation focuses on the airside (VAV box and AHU
+trim & respond) logic from Guideline 36.  Possible extensions include:
+
+* **Central plant reset** — Implement chilled water and hot water
+  temperature resets based on aggregated AHU requests.
+* **Optimal start** — Convert the various ML models in the
+  `open‑hvac‑optimization` project to compiled kernels (.so or .wasm)
+  with fixed coefficients.
+* **Auto‑generated GitHub Releases** — Use GitHub Actions to build
+  the `.wasm` modules on each tag and attach them to a release,
+  similar to how Niagara shares `.bog` files.
+
+Contributions are welcome!  See the tests and code for guidance on
+maintaining API stability and deterministic behaviour.
