@@ -1,7 +1,7 @@
-# open-hvac-optimization
-Concept idea in WebAssembly for IoT edge for generic HVAC system optimization algorithms.
+# HVAC Guideline‑36 WebAssembly Module
 
-This repository demonstrates how to implement the ASHRAE Guideline 36 logic in C, compile it to a WebAssembly module
+This repository demonstrates how to implement the ASHRAE Guideline 36
+zone‑level request logic in C, compile it to a WebAssembly module
 using Emscripten and then call it from Python. The same pattern
 generalises to any IoT edge application where Python acts as the
 “gateway glue” (handling BACnet, MQTT and scheduling) while
@@ -91,20 +91,7 @@ implementation (e.g. checking for invalid point values and clearing
 timers on error). If you require full parity, you can add additional
 checks in `hvac_algo.c` before computing requests.
 
----
-
 ## License
 
-Everything here is **MIT Licensed** — free, open source, and made for the BAS community.  
-Use it, remix it, or improve it — just share it forward so others can benefit too. 🥰🌍
-
-
-【MIT License】
-
-Copyright 2025 Ben Bartling
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+This example is provided under the MIT license. See the `LICENSE`
+file for details.

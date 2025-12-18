@@ -1,21 +1,31 @@
-# Ignore build artifacts and generated files
-hvac_algo.wasm
-*.o
-*.out
-
-# Ignore Python cache and virtual environments
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyd
+*.so
+*.dylib
+*.dll
 .venv/
-env/
 venv/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
 
-# Ignore OS-specific files
+# Wasm artifacts
+c/*.wasm
+c/*.wat
+
+# Emscripten
+**/.emscripten_cache/
+**/emsdk/
+**/emsdk-*/
+**/upstream/
+**/node_modules/
+
+# OS / editor
 .DS_Store
 Thumbs.db
-
-# Ignore IDE/editor configs
 .vscode/
 .idea/
-*.swp
-EOF
