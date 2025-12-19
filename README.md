@@ -98,6 +98,635 @@ open-hvac-optimization/
   pip install wasmtime pytest black
   ```
 
+<details>
+<summary>💻 GL36 Code Base in C!</summary>
+
+> Combined VAV + AHU Guideline-36 logic
+
+```c
+/*
+ * system_algo.c
+ *
+ * Implementation of the combined VAV + AHU Guideline-36 logic.
+ *
+ * This translation unit simply reuses the existing, battle-tested
+ * VAV and AHU algorithms by including their C sources and wiring
+ * them together into a single convenience API.
+ */
+
+#include <stddef.h>
+#include "../vav/vav_algo.h"
+#include "../ahu/ahu_algo.h"
+#include "system_algo.h"
+
+void system_init(
+    int n_zones,
+    double p_sp0,
+    double p_spmin,
+    double p_spmax,
+    double p_startup_delay_sec,
+    double p_update_interval_sec,
+    double p_ignore_req,
+    double p_sp_trim,
+    double p_sp_respond,
+    double p_sp_respond_max,
+    double sat_sp0,
+    double sat_spmin,
+    double sat_spmax,
+    double sat_startup_delay_sec,
+    double sat_update_interval_sec,
+    double sat_ignore_req,
+    double sat_sp_trim,
+    double sat_sp_respond,
+    double sat_sp_respond_max
+)
+{
+    /* Initialise per-zone VAV state and both AHU loops. */
+    vav_init(n_zones);
+    ahu_init_pressure(
+        p_sp0, p_spmin, p_spmax,
+        p_startup_delay_sec, p_update_interval_sec,
+        p_ignore_req, p_sp_trim,
+        p_sp_respond, p_sp_respond_max
+    );
+    ahu_init_sat(
+        sat_sp0, sat_spmin, sat_spmax,
+        sat_startup_delay_sec, sat_update_interval_sec,
+        sat_ignore_req, sat_sp_trim,
+        sat_sp_respond, sat_sp_respond_max
+    );
+}
+
+void system_update(
+    const double* zoneTemp,
+    const double* zoneCoolingSpt,
+    const double* zoneDemand,
+    const double* vavFlow,
+    const double* vavFlowSpt,
+    const double* vavDamperCmd,
+    double dt_sec,
+    int is_imperial,
+    int n_zones,
+    int fanRun,
+    int occupied,
+    double current_pressure_sp,
+    double current_sat_sp,
+    double outside_air_temp,
+    double oat_min,
+    double oat_max,
+    int* coolRequests,
+    int* pressureRequests,
+    double* next_pressure_sp,
+    double* next_sat_sp
+)
+{
+    /* First, compute per-zone requests using the VAV logic.  We
+     * use variable-length arrays here for simplicity; the
+     * upper-level wrappers ensure that n_zones is modest.
+     */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+    int local_cool[ n_zones ];
+    int local_press[ n_zones ];
+#else
+    /* Fallback for compilers without VLAs: require n_zones > 0 and
+     * allocate a small worst-case.  For WebAssembly via Emscripten
+     * this branch should not be hit, but is kept for completeness.
+     */
+    int local_cool[128];
+    int local_press[128];
+    if (n_zones > 128) {
+        n_zones = 128;
+    }
+#endif
+
+    vav_update(
+        zoneTemp,
+        zoneCoolingSpt,
+        zoneDemand,
+        vavFlow,
+        vavFlowSpt,
+        vavDamperCmd,
+        dt_sec,
+        is_imperial,
+        n_zones,
+        local_cool,
+        local_press
+    );
+
+    /* Aggregate requests across all zones. */
+    double total_pressure_req = 0.0;
+    double total_cool_req = 0.0;
+    for (int i = 0; i < n_zones; ++i) {
+        pressureRequests[i] = local_press[i];
+        coolRequests[i]     = local_cool[i];
+        total_pressure_req += (double)local_press[i];
+        total_cool_req     += (double)local_cool[i];
+    }
+
+    /* Feed the aggregates into the AHU Trim & Respond loops to
+     * compute new duct static and SAT setpoints.
+     */
+    int fan_and_occ = (fanRun && occupied) ? 1 : 0;
+    double next_p = ahu_update_pressure(
+        fan_and_occ,
+        current_pressure_sp,
+        total_pressure_req,
+        dt_sec
+    );
+    double next_sat = ahu_update_sat(
+        fan_and_occ,
+        current_sat_sp,
+        total_cool_req,
+        outside_air_temp,
+        oat_min,
+        oat_max,
+        dt_sec
+    );
+
+    if (next_pressure_sp) {
+        *next_pressure_sp = next_p;
+    }
+    if (next_sat_sp) {
+        *next_sat_sp = next_sat;
+    }
+}
+```
+
+
+> AHU Only T&R
+
+```c
+/*
+ * ahu_algo.c
+ *
+ * Implementation of simplified Trim & Respond algorithms for AHU duct
+ * static pressure and supply air temperature setpoints.  These
+ * algorithms are distilled from ASHRAE Guideline‑36 examples and the
+ * Niagara reference code.  The goal is not to perfectly reproduce
+ * every nuance of the Niagara implementation but to provide a
+ * deterministic, portable core that can be compiled to WebAssembly
+ * and exercised from Python test cases.  The algorithms support
+ * startup delay, update cadence, ignored request thresholds and
+ * bounded trim/respond adjustments.  Outside air temperature
+ * influence is currently ignored for simplicity.
+ */
+
+#include "ahu_algo.h"
+#include <stdlib.h>
+
+/* ------------------------------------------------------------------------- */
+/* Pressure Trim & Respond internal state */
+
+typedef struct {
+  /* Configuration */
+  double sp0;
+  double spmin;
+  double spmax;
+  double startup_delay;
+  double update_interval;
+  double ignore_req;
+  double sp_trim;
+  double sp_respond;
+  double sp_respond_max;
+  /* Mutable state */
+  double pressure_sp;         /* last commanded setpoint */
+  double elapsed_startup;     /* seconds since fan turned on */
+  double elapsed_update;      /* seconds since last trim/respond action */
+  int fan_on_last;            /* 0/1 flag to detect edges */
+} PressureState;
+
+static PressureState pressureState = {0};
+
+void ahu_init_pressure(double sp0, double spmin, double spmax,
+                       double startup_delay_sec, double update_interval_sec,
+                       double ignore_req, double sp_trim,
+                       double sp_respond, double sp_respond_max) {
+  pressureState.sp0 = sp0;
+  pressureState.spmin = spmin;
+  pressureState.spmax = spmax;
+  pressureState.startup_delay = startup_delay_sec;
+  pressureState.update_interval = update_interval_sec;
+  pressureState.ignore_req = ignore_req;
+  pressureState.sp_trim = sp_trim;
+  pressureState.sp_respond = sp_respond;
+  pressureState.sp_respond_max = sp_respond_max;
+  /* Reset mutable state */
+  pressureState.pressure_sp = sp0;
+  pressureState.elapsed_startup = 0.0;
+  pressureState.elapsed_update = 0.0;
+  pressureState.fan_on_last = 0;
+}
+
+static double clamp_double(double v, double lo, double hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+double ahu_update_pressure(int fanRun, double current_sp,
+                           double total_requests, double dt_sec) {
+  PressureState* st = &pressureState;
+  /* Fan off: reset to initial setpoint and clear timers */
+  if (!fanRun) {
+    st->pressure_sp = st->sp0;
+    st->elapsed_startup = 0.0;
+    st->elapsed_update  = 0.0;
+    st->fan_on_last = 0;
+    return st->pressure_sp;
+  }
+  /* Fan just turned on: edge detection */
+  if (st->fan_on_last == 0) {
+    st->fan_on_last = 1;
+    st->pressure_sp = st->sp0;
+    st->elapsed_startup = 0.0;
+    st->elapsed_update  = 0.0;
+    return st->pressure_sp;
+  }
+  /* Accumulate startup delay */
+  st->elapsed_startup += dt_sec;
+  if (st->elapsed_startup < st->startup_delay) {
+    /* Hold at sp0 during startup delay */
+    st->pressure_sp = st->sp0;
+    return st->pressure_sp;
+  }
+  /* Accumulate update cadence */
+  st->elapsed_update += dt_sec;
+  if (st->elapsed_update < st->update_interval) {
+    /* No change until the cadence is met */
+    return st->pressure_sp;
+  }
+  /* Reset the cadence timer */
+  st->elapsed_update = 0.0;
+  /* Determine trim or respond action */
+  double new_sp;
+  if (total_requests <= st->ignore_req) {
+    /* Trim: reduce setpoint by a fixed amount */
+    new_sp = st->pressure_sp + st->sp_trim;
+  } else {
+    /* Respond: increase setpoint proportional to requests over the ignore threshold */
+    double respond = st->sp_respond * (total_requests - st->ignore_req);
+    /* Limit the magnitude of the respond increment */
+    if (st->sp_respond > 0) {
+      if (respond > st->sp_respond_max) respond = st->sp_respond_max;
+    } else {
+      if (respond < st->sp_respond_max) respond = st->sp_respond_max;
+    }
+    new_sp = st->pressure_sp + respond;
+  }
+  /* Clamp to allowable range and update state */
+  st->pressure_sp = clamp_double(new_sp, st->spmin, st->spmax);
+  return st->pressure_sp;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Supply Air Temperature Trim & Respond internal state */
+
+typedef struct {
+  /* Configuration */
+  double sp0;
+  double spmin;
+  double spmax;
+  double startup_delay;
+  double update_interval;
+  double ignore_req;
+  double sp_trim;
+  double sp_respond;
+  double sp_respond_max;
+  /* Mutable state */
+  double sat_sp;
+  double elapsed_startup;
+  double elapsed_update;
+  int fan_on_last;
+} SatState;
+
+static SatState satState = {0};
+
+void ahu_init_sat(double sp0, double spmin, double spmax,
+                  double startup_delay_sec, double update_interval_sec,
+                  double ignore_req, double sp_trim,
+                  double sp_respond, double sp_respond_max) {
+  satState.sp0 = sp0;
+  satState.spmin = spmin;
+  satState.spmax = spmax;
+  satState.startup_delay = startup_delay_sec;
+  satState.update_interval = update_interval_sec;
+  satState.ignore_req = ignore_req;
+  satState.sp_trim = sp_trim;
+  satState.sp_respond = sp_respond;
+  satState.sp_respond_max = sp_respond_max;
+  satState.sat_sp = sp0;
+  satState.elapsed_startup = 0.0;
+  satState.elapsed_update = 0.0;
+  satState.fan_on_last = 0;
+}
+
+double ahu_update_sat(int fanRun, double current_sp,
+                      double total_requests, double outside_air_temp,
+                      double oat_min, double oat_max, double dt_sec) {
+  /* The outside air temperature parameters are accepted for API
+   * compatibility but currently unused. */
+  (void)outside_air_temp;
+  (void)oat_min;
+  (void)oat_max;
+  SatState* st = &satState;
+  /* Fan off: reset to initial setpoint and clear timers */
+  if (!fanRun) {
+    st->sat_sp = st->sp0;
+    st->elapsed_startup = 0.0;
+    st->elapsed_update  = 0.0;
+    st->fan_on_last = 0;
+    return st->sat_sp;
+  }
+  /* Fan just turned on */
+  if (st->fan_on_last == 0) {
+    st->fan_on_last = 1;
+    st->sat_sp = st->sp0;
+    st->elapsed_startup = 0.0;
+    st->elapsed_update  = 0.0;
+    return st->sat_sp;
+  }
+  /* Accumulate startup delay */
+  st->elapsed_startup += dt_sec;
+  if (st->elapsed_startup < st->startup_delay) {
+    st->sat_sp = st->sp0;
+    return st->sat_sp;
+  }
+  /* Accumulate update cadence */
+  st->elapsed_update += dt_sec;
+  if (st->elapsed_update < st->update_interval) {
+    return st->sat_sp;
+  }
+  /* Reset cadence timer */
+  st->elapsed_update = 0.0;
+  /* Trim or respond */
+  double new_sp;
+  if (total_requests <= st->ignore_req) {
+    /* Trim: raise setpoint (towards warmer) */
+    new_sp = st->sat_sp + st->sp_trim;
+  } else {
+    /* Respond: lower setpoint proportional to requests (cooler) */
+    double respond = st->sp_respond * (total_requests - st->ignore_req);
+    /* Limit the magnitude of respond */
+    if (st->sp_respond > 0) {
+      if (respond > st->sp_respond_max) respond = st->sp_respond_max;
+    } else {
+      if (respond < st->sp_respond_max) respond = st->sp_respond_max;
+    }
+    new_sp = st->sat_sp + respond;
+  }
+  st->sat_sp = clamp_double(new_sp, st->spmin, st->spmax);
+  return st->sat_sp;
+}
+
+```
+
+
+> VAV Box Only T&R
+
+```c
+
+/*
+ * vav_algo.c
+ *
+ * Implementation of ASHRAE Guideline‑36 zone level request logic for
+ * multiple VAV boxes.  This module manages per‑zone timers and
+ * hysteresis state required to determine cooling and pressure
+ * requests for each VAV box.  The algorithm closely follows the
+ * Niagara example provided in the project README but is expressed in
+ * C so it can be compiled to WebAssembly using Emscripten.  See
+ * vav_algo.h for the public interface.
+ */
+
+#include "vav_algo.h"
+#include <stdlib.h>
+
+/* Global constants based on ASHRAE Guideline 36.  See the Java
+ * implementation in the README for definitions.  These values are
+ * intentionally constant so they can be inlined by the compiler.
+ */
+
+/* Pressure timing / thresholds (seconds) */
+static const double PRESS_PERSIST_SEC      = 60.0; /* 1 minute persistence */
+static const double PRESS_RATIO_3REQ       = 0.50;
+static const double PRESS_DAMPER_3REQ_MIN  = 95.0;
+static const double PRESS_RATIO_2REQ       = 0.70;
+static const double PRESS_DAMPER_2REQ_MIN  = 95.0;
+static const double PRESS_DAMPER_1REQ_ON   = 95.0;
+static const double PRESS_DAMPER_1REQ_OFF  = 85.0;
+
+/* Temperature timing / thresholds */
+static const double TEMP_HIGH_DIFF_C  = 3.0;
+static const double TEMP_MED_DIFF_C   = 2.0;
+static const double TEMP_HIGH_DIFF_F  = 5.0;
+static const double TEMP_MED_DIFF_F   = 3.0;
+static const double TEMP_PERSIST_SEC  = 120.0; /* 2 minutes */
+static const double TEMP_SUPPRESS_SEC = 60.0;  /* 1 minute */
+static const double TEMP_LOOP_1REQ_ON  = 95.0;
+static const double TEMP_LOOP_1REQ_OFF = 85.0;
+
+/* Internal per‑zone state structure.  One instance of this struct
+ * exists for each VAV box.  Timers accumulate elapsed time when
+ * conditions are met.  lastPressureReq and lastTempReq store
+ * hysteresis state to allow the 1‑request conditions to persist
+ * between calls.
+ */
+typedef struct {
+  /* Pressure timers and state */
+  double pressHighTimerSec;
+  double pressMedTimerSec;
+  int    lastPressureReq;
+  double lastPressDamperPct;
+  double lastPressFlowRatio;
+  /* Temperature timers and state */
+  double tempHighTimerSec;
+  double tempMedTimerSec;
+  double tempSuppressTimerSec;
+  int    lastTempReq;
+  double lastTempDiff;
+  double lastTempLoopPct;
+} ZoneState;
+
+/* Global pointer to zone state array */
+static ZoneState* zoneStates = NULL;
+static int zoneCount = 0;
+
+/* Initialise the zone state array.  Any previously allocated state
+ * will be freed.  See vav_algo.h for documentation.  */
+void vav_init(int n_zones) {
+  if (zoneStates) {
+    free(zoneStates);
+    zoneStates = NULL;
+    zoneCount = 0;
+  }
+  if (n_zones > 0) {
+    zoneStates = (ZoneState*)calloc((size_t)n_zones, sizeof(ZoneState));
+    zoneCount = n_zones;
+    /* calloc zeroes all fields */
+  }
+}
+
+/* Helper to clamp an integer value between a minimum and maximum. */
+static inline int clamp_int(int v, int lo, int hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+/* Compute the pressure request for a single zone.  See the comments
+ * above for threshold definitions.  The dt_sec parameter is the
+ * elapsed time since the last call.  */
+static int compute_pressure(ZoneState* st, double damper, double flow, double flow_sp, double dt_sec) {
+  /* If flow setpoint <= 0 treat as invalid and reset timers */
+  double ratio = 1.0;
+  if (flow_sp > 0.0) {
+    ratio = flow / flow_sp;
+  } else {
+    st->pressHighTimerSec = 0.0;
+    st->pressMedTimerSec  = 0.0;
+    st->lastPressDamperPct = damper;
+    st->lastPressFlowRatio = 0.0;
+    st->lastPressureReq = 0;
+    return 0;
+  }
+
+  st->lastPressDamperPct = damper;
+  st->lastPressFlowRatio = ratio;
+
+  /* 3 requests: ratio < 0.50 and damper ≥ 95 for 1 minute */
+  int cond3 = (ratio < PRESS_RATIO_3REQ) && (damper >= PRESS_DAMPER_3REQ_MIN);
+  if (cond3) {
+    st->pressHighTimerSec += dt_sec;
+  } else {
+    st->pressHighTimerSec = 0.0;
+  }
+  if (st->pressHighTimerSec >= PRESS_PERSIST_SEC) {
+    st->pressMedTimerSec = 0.0;
+    st->lastPressureReq = 3;
+    return 3;
+  }
+
+  /* 2 requests: ratio < 0.70 and damper ≥ 95 for 1 minute */
+  int cond2 = (ratio < PRESS_RATIO_2REQ) && (damper >= PRESS_DAMPER_2REQ_MIN);
+  if (cond2) {
+    st->pressMedTimerSec += dt_sec;
+  } else {
+    st->pressMedTimerSec = 0.0;
+  }
+  if (st->pressMedTimerSec >= PRESS_PERSIST_SEC) {
+    st->lastPressureReq = 2;
+    return 2;
+  }
+
+  /* 1 request with hysteresis */
+  if (damper >= PRESS_DAMPER_1REQ_ON) {
+    st->lastPressureReq = 1;
+    return 1;
+  }
+  if (st->lastPressureReq == 1 && damper >= PRESS_DAMPER_1REQ_OFF) {
+    return 1;
+  }
+  st->lastPressureReq = 0;
+  return 0;
+}
+
+/* Compute the cooling request for a single zone.  Differences in
+ * temperature thresholds and persistence durations between Celsius and
+ * Fahrenheit are handled via the is_imperial flag.  */
+static int compute_cooling(ZoneState* st, double zoneTemp, double zoneSp,
+                           double demand, int is_imperial, double dt_sec) {
+  /* Choose thresholds based on unit system */
+  double highDiff = is_imperial ? TEMP_HIGH_DIFF_F : TEMP_HIGH_DIFF_C;
+  double medDiff  = is_imperial ? TEMP_MED_DIFF_F  : TEMP_MED_DIFF_C;
+
+  double diff = zoneTemp - zoneSp; /* positive means too warm */
+  st->lastTempDiff = diff;
+  st->lastTempLoopPct = demand;
+
+  /* Advance suppression timer up to its max.  During suppression the
+   * zone should not accumulate deviation timers. */
+  if (st->tempSuppressTimerSec < TEMP_SUPPRESS_SEC) {
+    st->tempSuppressTimerSec += dt_sec;
+    if (st->tempSuppressTimerSec > TEMP_SUPPRESS_SEC) {
+      st->tempSuppressTimerSec = TEMP_SUPPRESS_SEC;
+    }
+  }
+
+  if (st->tempSuppressTimerSec >= TEMP_SUPPRESS_SEC) {
+    /* Accumulate temperature deviation timers */
+    if (diff >= highDiff) {
+      st->tempHighTimerSec += dt_sec;
+      st->tempMedTimerSec  = 0.0;
+    } else if (diff >= medDiff) {
+      st->tempMedTimerSec  += dt_sec;
+      st->tempHighTimerSec  = 0.0;
+    } else {
+      st->tempHighTimerSec = 0.0;
+      st->tempMedTimerSec  = 0.0;
+    }
+
+    if (st->tempHighTimerSec >= TEMP_PERSIST_SEC) {
+      st->lastTempReq = 3;
+      return 3;
+    }
+    if (st->tempMedTimerSec >= TEMP_PERSIST_SEC) {
+      st->lastTempReq = 2;
+      return 2;
+    }
+  } else {
+    /* During suppression period, do not accumulate deviation timers */
+    st->tempHighTimerSec = 0.0;
+    st->tempMedTimerSec  = 0.0;
+  }
+
+  /* 1 request: demand loop saturation with hysteresis */
+  if (demand >= TEMP_LOOP_1REQ_ON) {
+    st->lastTempReq = 1;
+    return 1;
+  }
+  if (st->lastTempReq == 1 && demand >= TEMP_LOOP_1REQ_OFF) {
+    return 1;
+  }
+  st->lastTempReq = 0;
+  return 0;
+}
+
+/* Public API: compute requests for all zones.  See header for
+ * documentation. */
+void vav_update(const double* zoneTemp,
+                const double* zoneCoolingSpt,
+                const double* zoneDemand,
+                const double* vavFlow,
+                const double* vavFlowSpt,
+                const double* vavDamperCmd,
+                double dt_sec,
+                int is_imperial,
+                int n_zones,
+                int* coolRequests,
+                int* pressureRequests) {
+  if (!zoneStates || n_zones <= 0) return;
+  if (n_zones > zoneCount) {
+    n_zones = zoneCount;
+  }
+  for (int i = 0; i < n_zones; ++i) {
+    ZoneState* st = &zoneStates[i];
+    double t  = zoneTemp[i];
+    double sp = zoneCoolingSpt[i];
+    double dem = zoneDemand[i];
+    double flow = vavFlow[i];
+    double flow_sp = vavFlowSpt[i];
+    double damper = vavDamperCmd[i];
+    /* compute pressure */
+    int pReq = compute_pressure(st, damper, flow, flow_sp, dt_sec);
+    /* compute cooling */
+    int cReq = compute_cooling(st, t, sp, dem, is_imperial, dt_sec);
+    /* clamp outputs */
+    pressureRequests[i] = clamp_int(pReq, 0, 3);
+    coolRequests[i]     = clamp_int(cReq, 0, 3);
+  }
+}
+```
+
+
 ## Building the WebAssembly modules
 
 Run the build script from the `c/` directory:
