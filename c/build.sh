@@ -35,3 +35,12 @@ emcc ahu/ahu_algo.c -O3 \
   -o ahu/ahu_algo.wasm
 
 echo "Build complete: vav/vav_algo.wasm and ahu/ahu_algo.wasm"
+
+echo "Building combined SYSTEM module..."
+emcc system/system_algo.c vav/vav_algo.c ahu/ahu_algo.c -O3 \
+  -sSTANDALONE_WASM=1 \
+  -sALLOW_MEMORY_GROWTH=1 \
+  -sEXPORTED_FUNCTIONS='["_system_init","_system_update","_malloc","_free"]' \
+  -o system/system_algo.wasm
+
+echo "Build complete: vav/vav_algo.wasm, ahu/ahu_algo.wasm and system/system_algo.wasm"
