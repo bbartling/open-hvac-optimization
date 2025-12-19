@@ -726,6 +726,7 @@ void vav_update(const double* zoneTemp,
 }
 ```
 
+</details>
 
 ## Building the WebAssembly modules
 
