@@ -1,0 +1,305 @@
+@prefix bacnet: <http://data.ashrae.org/bacnet/2020#> .
+@prefix bldg: <urn:my_building/> .
+@prefix brick: <https://brickschema.org/schema/Brick#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix ref: <https://brickschema.org/schema/Brick/ref#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+bldg:dev3456789_analog-input_1 a brick:Discharge_Air_Static_Pressure_Sensor,
+        brick:Sensor ;
+    rdfs:label "DAP-P" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_1 .
+
+bldg:dev3456789_analog-input_2 a brick:Sensor,
+        brick:Supply_Air_Temperature_Sensor ;
+    rdfs:label "SA-T" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_2 .
+
+bldg:dev3456789_analog-input_3 a brick:Mixed_Air_Temperature_Sensor,
+        brick:Sensor ;
+    rdfs:label "MA-T" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_3 .
+
+bldg:dev3456789_analog-input_4 a brick:Return_Air_Temperature_Sensor,
+        brick:Sensor ;
+    rdfs:label "RA-T" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_4 .
+
+bldg:dev3456789_analog-input_5 a brick:Sensor,
+        brick:Supply_Air_Flow_Sensor ;
+    rdfs:label "SA-FLOW" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_5 .
+
+bldg:dev3456789_analog-input_6 a brick:Outside_Air_Temperature_Sensor,
+        brick:Sensor ;
+    rdfs:label "OA-T" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_6 .
+
+bldg:dev3456789_analog-input_7 a brick:Electrical_Power_Sensor,
+        brick:Sensor ;
+    rdfs:label "ELEC-PWR" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-input_7 .
+
+bldg:dev3456789_analog-output_1 a brick:Command,
+        brick:Supply_Fan_Speed_Command ;
+    rdfs:label "SF-O" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-output_1 .
+
+bldg:dev3456789_analog-output_2 a brick:Command,
+        brick:Heating_Valve_Command ;
+    rdfs:label "HTG-O" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-output_2 .
+
+bldg:dev3456789_analog-output_3 a brick:Command,
+        brick:Cooling_Valve_Command ;
+    rdfs:label "CLG-O" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-output_3 .
+
+bldg:dev3456789_analog-output_4 a brick:Command,
+        brick:Outside_Air_Damper_Command ;
+    rdfs:label "DPR-O" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-output_4 .
+
+bldg:dev3456789_analog-value_1 a brick:Discharge_Air_Static_Pressure_Setpoint,
+        brick:Setpoint ;
+    rdfs:label "DAP-SP" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-value_1 .
+
+bldg:dev3456789_analog-value_2 a brick:Setpoint,
+        brick:Supply_Air_Temperature_Setpoint ;
+    rdfs:label "SAT-SP" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-value_2 .
+
+bldg:dev3456789_analog-value_3 a brick:Setpoint ;
+    rdfs:label "OAT-NETWORK" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_analog-value_3 .
+
+bldg:dev3456789_binary-input_1 a brick:Sensor,
+        brick:Supply_Fan_Status ;
+    rdfs:label "SF-S" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_binary-input_1 .
+
+bldg:dev3456789_binary-output_1 a brick:Command,
+        brick:Supply_Fan_Command ;
+    rdfs:label "SF-C" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_binary-output_1 .
+
+bldg:dev3456789_device_3456789 a brick:Equipment ;
+    rdfs:label "BensFakeAhu" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_device_3456789 .
+
+bldg:dev3456789_multi-state-value_1 a brick:Setpoint ;
+    rdfs:label "Occ-Schedule" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_multi-state-value_1 .
+
+bldg:dev3456789_network-port_1 a brick:Point ;
+    rdfs:label "NetworkPort-1" ;
+    brick:isPointOf bldg:device_3456789 ;
+    ref:hasExternalReference bldg:ref_3456789_network-port_1 .
+
+bldg:dev3456790_analog-input_1 a brick:Sensor,
+        brick:Zone_Air_Temperature_Sensor ;
+    rdfs:label "ZoneTemp" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-input_1 .
+
+bldg:dev3456790_analog-input_2 a brick:Discharge_Air_Flow_Sensor,
+        brick:Sensor ;
+    rdfs:label "VAVFlow" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-input_2 .
+
+bldg:dev3456790_analog-output_1 a brick:Command,
+        brick:Damper_Position_Command ;
+    rdfs:label "VAVDamperCmd" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-output_1 .
+
+bldg:dev3456790_analog-value_1 a brick:Setpoint,
+        brick:Zone_Cooling_Temperature_Setpoint ;
+    rdfs:label "ZoneCoolingSpt" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-value_1 .
+
+bldg:dev3456790_analog-value_2 a brick:Setpoint ;
+    rdfs:label "ZoneDemand" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-value_2 .
+
+bldg:dev3456790_analog-value_3 a brick:Discharge_Air_Flow_Setpoint,
+        brick:Setpoint ;
+    rdfs:label "VAVFlowSpt" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_analog-value_3 .
+
+bldg:dev3456790_device_3456790 a brick:Equipment ;
+    rdfs:label "Zone1VAV" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_device_3456790 .
+
+bldg:dev3456790_network-port_1 a brick:Point ;
+    rdfs:label "NetworkPort-1" ;
+    brick:isPointOf bldg:device_3456790 ;
+    ref:hasExternalReference bldg:ref_3456790_network-port_1 .
+
+bldg:ref_3456789_analog-input_1 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_2 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,2" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_3 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,3" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_4 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,4" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_5 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,5" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_6 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,6" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-input_7 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,7" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-output_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-output,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-output_2 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-output,2" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-output_3 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-output,3" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-output_4 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-output,4" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-value_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-value_2 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,2" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_analog-value_3 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,3" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_binary-input_1 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "binary-input,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_binary-output_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "binary-output,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_device_3456789 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "device,3456789" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_multi-state-value_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "multi-state-value,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456789_network-port_1 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "network-port,1" ;
+    bacnet:objectOf bldg:device_3456789 .
+
+bldg:ref_3456790_analog-input_1 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,1" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_analog-input_2 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "analog-input,2" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_analog-output_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-output,1" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_analog-value_1 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,1" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_analog-value_2 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,2" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_analog-value_3 a ref:BACnetReference ;
+    bacnet:is-writable true ;
+    bacnet:object-identifier "analog-value,3" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_device_3456790 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "device,3456790" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:ref_3456790_network-port_1 a ref:BACnetReference ;
+    bacnet:is-writable false ;
+    bacnet:object-identifier "network-port,1" ;
+    bacnet:objectOf bldg:device_3456790 .
+
+bldg:device_3456790 a bacnet:BACnetDevice,
+        brick:Equipment ;
+    rdfs:label "Zone1VAV" .
+
+bldg:device_3456789 a bacnet:BACnetDevice,
+        brick:Equipment ;
+    rdfs:label "BensFakeAhu" .
+
